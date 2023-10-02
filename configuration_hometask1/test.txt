@@ -1,0 +1,13 @@
+ls
+cd folder
+ls
+cat difuri.txt
+cat diffuri.txt
+cd /
+cat i_am_berkoff.txt
+ls folder/gamedev
+cat folder/gamedev/linux.py
+cd folder/gamedev
+cat avrora.txt
+exit
+
