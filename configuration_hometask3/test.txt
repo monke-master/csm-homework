@@ -1,0 +1,40 @@
+(information
+    (groups
+        IKBO-1-22,
+        IKBO-2-22,
+        IKBO-3-22,
+        IKBO-4-22,
+        IKBO-5-22,
+        IKBO-6-22,
+        IKBO-7-22,
+        IKBO-8-22,
+        IKBO-9-22,
+        IKBO-10-22,
+        IKBO-11-22,
+        IKBO-12-22,
+        IKBO-13-22,
+        IKBO-14-22,
+        IKBO-15-22,
+        IKBO-16-22,
+        IKBO-17-22,
+        IKBO-18-22,
+        IKBO-19-22,
+        IKBO-20-22,
+        IKBO-21-22,
+        IKBO-22-22,
+    ),
+    (lessons
+        (lesson1
+            (1 (age 19), (group IKBO-4-22), (name "Kudj Kobain")),
+            (2 (age 18), (group IKBO-4-22), (name "Berkhoven")),
+            (teacher "Dzerzhinsky R.I."),
+            (subject "Discrete mathematics")
+        ),
+        (lesson2
+            (1 (age 18), (group IKBO-22-22), (name "Dneprovsky M.A.")),
+            (2 (age 18), (group IKBO-22-22), (name "Letov I.F.")),
+            (teacher "Puturidze Z.S."),
+            (subject "Avrora")
+        ),
+    )
+)
