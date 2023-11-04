@@ -1,81 +1,174 @@
-from sly import Lexer, Parser
-from pathlib import Path
+
+import graphviz
+from bs4 import BeautifulSoup
+import requests
+
+import re
 
 
-class CalcLexer(Lexer):
-    tokens = {BEGIN, END, NAME, STRING, DIGIT, GROUPS_IND, STUDENT_IND, AGE_IND, GROUP_IND, SURNAME_IND, DISCIPLINE_IND}
+# функция чистки строки
+def delEl(a):
+    a = a.replace(" ", '')
+    flag = -1
+    i = 0
+    a = a.replace("\n", '')
+    a = a.replace("'", "")
+    a = a.replace(" ", '')
+    a = a.replace("'", '')
+    a = a.replace('"', '')
+    a = a.replace(" ", '')
+    a = a.replace(',', '')
+    a = a.replace(" ", '')
 
-    # Tokens
-    BEGIN = r'\('
-    END = r'\)'
-    ignore = r' \t'
-    ignore_newline = r'\n+'
-    ignore_comment = r'\#.*'
-    NAME = r'(?!groups|students|age|group|surname|discipline)[^ \t\#();\'\@\^]+'
-    DIGIT = r'[0-9]+'
-    GROUPS_IND = r'groups'
-    STUDENT_IND = r'students'
-    AGE_IND = r'age'
-    GROUP_IND = r'group'
-    SURNAME_IND = r'surname'
-    DISCIPLINE_IND = r'discipline'
+    while i < len(a) - 1:
+        if a[i] in "<>=;:~!@#$^&*()[]":
+            flag = i
+            break
+        i += 1
+    if flag != -1:
+        a = a[0:flag]
+    return (a)
 
 
-class CalcParser(Parser):
-    tokens = CalcLexer.tokens
+# функция получения адреса на код установки
+def get_url(library_name: str):
+    library_name = library_name.lower()
+    URL = 'https://pypi.org/pypi/' + library_name + '/'
+    if library_name[-1].isdigit():
+        library_name = library_name[0:-1]
 
-    @_("BEGIN GROUPS_IND name names END")
-    def groups(self, p):
-        return [p.name] + p.names
-
-    @_("BEGIN age group surname END")
-    def student(self, p):
+    page = requests.get(URL)
+    if page.status_code != 200:
+        print("Произошла ошибка при получении зависимостей")
         return
 
-    @_("BEGIN AGE_IND name END")
-    def age(self, p):
-        return [p.name]
+    data = page.text
+    soup = BeautifulSoup(data, 'html.parser')
+    result = ''
+    for link in soup.find_all('a'):
+        if link.get('href') and "https://github.com/" in (link.get('href')):
+            help = link.get('href')
+            help_ind = len(help) - 1
+            res = help.rfind(library_name)
+            if (res == help_ind - (len(library_name) - 1) or
+                    (res == help_ind - (len(library_name)) and help[len(help) - 1] == '/')):
+                result = (link.get('href'))
 
-    @_("BEGIN SURNAME_IND name END")
-    def surname(self, p):
-        return [p.name]
+    base = result.replace("https://github.com/", "")
+    if result != '':
+        URL = result
+        page = requests.get(URL)
+        data = page.text
+        soup = BeautifulSoup(data, 'html.parser')
 
-    @_("BEGIN GROUP_IND name END")
-    def group(self, p):
-        return [p.name]
+        for link in soup.find_all('a'):
+            if link.get('href') and "setup.py" in link.get('href'):
+                result = link.get('href')
+                break
 
-
-
-
-    @_("BEGIN DISCIPLINE_IND name END")
-    def discipline(self, p):
-        return [p.name]
-
-    @_('name names')
-    def names(self, p):
-        return [p.name] + p.names
-
-    @_('empty')
-    def names(self, p):
-        return []
-
-    @_('NAME')
-    def name(self, p):
-        return p[0]
-
-    @_('')
-    def empty(self, p):
-        pass
+        example = "https://raw.githubusercontent.com"
+        if base[len(base) - 1] != '/':
+            base += '/'
+        result = result.replace("blob/", "")
+        result = example + result
+        return result
 
 
-a = "test.conf"
-text = Path(a).read_text(encoding='utf-8', errors=None)
-lexer = CalcLexer()
-parser = CalcParser()
+# получение массива зависимостей
+def get_requirements(url):
+    page = requests.get(url)
+    html = page.text
+    f = open('test.txt', 'w', encoding="utf-8")
+    f.write(html)
+    f.close()
 
-data = lexer.tokenize(text)
+    file1 = open("test.txt", "r")
 
-parsed = parser.parse(data)
+    beBegin = False
+    beEnd = False
+    res = ''
+    while True:
+        line = file1.readline()
+        if not line:
+            break
 
-for tok in parsed:
-    print(tok)
+        elif 'install_requires=["' in line:
+            b = line.split("=")
+            line = ' '.join(b[1])
+            line = line.replace(" ", '')
+            b = line.split(":")
+            line = ' '.join(b[0])
+            line = line.replace(" ", '')
+            line = line.replace('[', '')
+            line = re.sub(r'\'', '', line)
+            line = line.replace(" ", '')
+            line = line.replace("\n", '')
+            line = line.replace('"', '')
+            line = line.replace(",", '')
+            line = line.replace("'", '')
+            help = line.split('>')
+            line = ' '.join(help[0])
+            line = line.replace(" ", '')
+            b = line.split(";")
+            line = ' '.join(b[0])
+            line = line.replace(" ", '')
+            res += line + ","
+            break
+        elif "install_requires=[" in line or "install_requires = [" in line or "requires = [" in line:
+            beBegin = True
+        else:
+            if beBegin and "]" in line:
+                beBegin = False
+                break
+            if beBegin:
+                line = delEl(line)
+                line = line.replace(" ", '')
+                line = line.replace("\n", '')
+                line = line.replace('"', '')
+                line = line.replace("'", '')
+                res += line + ","
+    if res == '': return -1
+    while res[-1] == ',':
+        res = res[0:-1]
+    a = res.split(",")
+    file1.close()
+    return a
+
+
+# построение графа зависимостей
+def build_graph(library, dep_mas):
+    graph = graphviz.Digraph(library)
+    for i in dep_mas:
+        graph.node(i)
+        if "-" in i:
+            i = '"' + i + '"'  # редактирование для получения сабграфа
+        sub_graph = get_sub_graph(i)
+        if not sub_graph:
+            graph.subgraph(sub_graph)
+    return graph
+
+
+# получение сабграфа
+def get_sub_graph(library):
+    url = get_url(library)  # получаем ссылку на файл с кодом зависимостей
+    if url and url != '':
+        try:
+            req = get_requirements(url)  # получаем массив зависимостей
+        except:
+            return None
+        if req != [''] and req and req != -1:
+            return build_graph(library, req)
+
+
+def main():
+    library_name = input()  # вводим название библиотеки
+    url = get_url(library_name)  # получаем ссылку на файл с кодом зависимостей
+    print(url)
+    if url and url != '':
+        req = get_requirements(url)  # получаем массив зависимостей
+        if req != [''] and req and req != -1:
+            dependency_graph = build_graph(library_name, req)
+            print(dependency_graph.source)
+
+
+main()
