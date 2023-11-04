@@ -1,177 +1,99 @@
-import graphviz
-from bs4 import BeautifulSoup
 import requests
 
-import re
-
-BASE_URL = 'https://pypi.org/pypi/'
-
-
-# нормализация строки
-def normalize(string):
-    string = string.replace(" ", '')
-    flag = -1
-    i = 0
-    string = string.replace("\n", '')
-    string = string.replace("'", "")
-    string = string.replace(" ", '')
-    string = string.replace("'", '')
-    string = string.replace('"', '')
-    string = string.replace(" ", '')
-    string = string.replace(',', '')
-    string = string.replace(" ", '')
-
-    for i in range(0, len(string)):
-        if string[i] in "<>=;:~!@#$^&*()[]":
-            flag = i
-            break
-        i += 1
-
-    if flag != -1:
-        string = string[0:flag]
-    return (string)
+packages = {}
+LEVELS_COUNT = 1
+BASE_URL = "https://pypi.org/pypi/"
 
 
-# функция получения адреса на код установки
-def find_url(library_name: str):
-    library_name = library_name.lower()
-    URL = BASE_URL + library_name + '/'
-    if library_name[-1].isdigit():
-        library_name = library_name[0:-1]
+# возвращает true, если данный пакет уже был добавлен в список
+def is_added(package_name):
+    for pack, deps in packages.items():
+        if pack == package_name:
+            return True
+    return False
 
-    page = requests.get(URL)
-    if page.status_code != 200:
-        print("Произошла ошибка при получении зависимостей")
+
+def find_requirements(package_name, level):
+    if level == LEVELS_COUNT:
+        return
+    for pack, deps in packages.items():
+        # если этот пакет уже рассматривался, то пропускаем его
+        if pack == package_name:
+            return
+
+    # получение json с данными о пакете
+    url = BASE_URL + package_name + "/json"
+    response = requests.get(url)
+
+    # обработка ошибки
+    if response.status_code != 200:
+        print("При получении данных произошла ошибка")
         return
 
-    data = page.text
-    soup = BeautifulSoup(data, 'html.parser')
-    result = ''
-    # поиск ссылки на гитхаб
-    for link in soup.find_all('a'):
-        if link.get('href') and "https://github.com/" in (link.get('href')):
-            help = link.get('href')
-            help_ind = len(help) - 1
-            res = help.rfind(library_name)
-            if (res == help_ind - (len(library_name) - 1) or
-                    (res == help_ind - (len(library_name)) and help[len(help) - 1] == '/')):
-                result = (link.get('href'))
+    data = response.json()
 
-    base = result.replace("https://github.com/", "")
-    # если ссылка была найдена:
-    if result != '':
-        URL = result
-        page = requests.get(URL)
-        data = page.text
-        soup = BeautifulSoup(data, 'html.parser')
+    if "message" in data:
+        if data["message"] == "Not Found":
+            print("Пакет " + package_name + " не найден")
 
-        # поиск файла с зависимостями
-        for link in soup.find_all('a'):
-            if link.get('href') and "setup.py" in link.get('href'):
-                result = link.get('href')
-                break
-
-        example = "https://raw.githubusercontent.com"
-        if base[len(base) - 1] != '/':
-            base += '/'
-        result = result.replace("blob/", "")
-        result = example + result
-        return result
-
-
-# получение массива зависимостей
-def get_requirements(url):
-    page = requests.get(url)
-    html = page.text
-
-    # запись во временный факл
-    temp = open('temp.txt', 'w', encoding="utf-8")
-    temp.write(html)
-    temp.close()
-
-    file1 = open("temp.txt", "r")
-
-    begin = False
-    res = ''
-    while True:
-        line = file1.readline()
-        if not line:
-            break
-        elif 'install_requires=["' in line:
-            b = line.split("=")
-            line = ' '.join(b[1])
-            line = line.replace(" ", '')
-            b = line.split(":")
-            line = ' '.join(b[0])
-            line = line.replace(" ", '')
-            line = line.replace('[', '')
-            line = re.sub(r'\'', '', line)
-            line = line.replace(" ", '')
-            line = line.replace("\n", '')
-            line = line.replace('"', '')
-            line = line.replace(",", '')
-            line = line.replace("'", '')
-            help = line.split('>')
-            line = ' '.join(help[0])
-            line = line.replace(" ", '')
-            b = line.split(";")
-            line = ' '.join(b[0])
-            line = line.replace(" ", '')
-            res += line + ","
-            break
-        elif "install_requires=[" in line or "install_requires = [" in line or "requires = [" in line:
-            begin = True
-        else:
-            if begin and "]" in line:
-                break
-            if begin:
-                line = normalize(line)
-                line = line.replace(" ", '')
-                line = line.replace("\n", '')
-                line = line.replace('"', '')
-                line = line.replace("'", '')
-                res += line + ","
-
-    if res == '':
-        return None
-    while res[-1] == ',':
-        res = res[0:-1]
-    file1.close()
-    return res.split(",")
-
-
-# построение графа зависимостей
-def build_graph(library, requirements):
-    graph = graphviz.Digraph(library)
+    # если в json есть раздел info
+    if 'info' not in data:
+        return
+    requirements = data["info"]["requires_dist"]
+    if requirements is None:
+        return
+    packages[package_name] = list()
+    # парсинг зависимостей в строке
     for req in requirements:
-        graph.node(req)
-        if "-" in req:
-            req = '"' + req + '"'
-        sub_graph = get_sub_graph(req)
-        if not sub_graph:
-            graph.subgraph(sub_graph)
-    return graph
+        brackets_pos = req.find('(')
+        if brackets_pos > -1:
+            req = req[:brackets_pos].strip()
+        sqr_brackets_pos = req.find('[')
+        if sqr_brackets_pos > -1:
+            req = req[:sqr_brackets_pos].strip()
+        exclamation_mark_pos = req.find('!')
+        if exclamation_mark_pos > -1:
+            req = req[:exclamation_mark_pos].strip()
+        greater_pos = req.find('>')
+        if greater_pos > -1:
+            req = req[:greater_pos].strip()
+        lesser_pos = req.find('<')
+        if lesser_pos > -1:
+            req = req[:lesser_pos].strip()
+        equals_pos = req.find('=')
+        if equals_pos > -1:
+            req = req[:equals_pos].strip()
+        tilda_pos = req.find('~')
+        if tilda_pos > -1:
+            req = req[:tilda_pos].strip()
+        semi_colon_pos = req.find(';')
+        if semi_colon_pos > -1:
+            req = req[:semi_colon_pos].strip()
+
+        # добавление недостающего пакета
+        if req not in packages[package_name]:
+            packages[package_name].append(req)
+        # находит зависимости недобавленного пакета
+        if not is_added(req):
+            find_requirements(req, level + 1)
 
 
-# получение подграфа
-def get_sub_graph(library):
-    url = find_url(library)
-    if url and url != '':
-        try:
-            req = get_requirements(url)
-            if req != [''] and req and req != -1:
-                return build_graph(library, req)
-        except:
-            return None
+
+# вывод графа
+def print_graph():
+    s = "digraph {\n"
+    for package, requirements in packages.items():
+        for req in requirements:
+            if req == package:
+                continue
+            temp = package.replace('-', '_').replace('.', '_') + ' -> ' + req.replace('-', '_').replace('.', '_')
+            s += "\t" + temp + "\n"
+    s += "}"
+    print(s)
 
 
 if __name__ == "__main__":
-    library_name = input("Введите название библиотеки: ")
-    url = find_url(library_name)
-    print("Найденная библиотека: ", url)
-    if url:
-        req = get_requirements(url)
-        if req and req != ['']:
-            print("Полученные зависимости: ")
-            dependency_graph = build_graph(library_name, req)
-            print(dependency_graph.source)
+    package_name = str(input("Введите наименование пакета: "))
+    LEVELS_COUNT = int(input("Введите рассматриваемый уровень вложенности: "))
+    find_requirements(package_name, 0)
+    print_graph()
