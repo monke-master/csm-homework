@@ -1,0 +1,17 @@
+digraph G {
+requests -> charset_normalizer
+requests -> idna
+requests -> urllib3
+requests -> certifi
+requests -> PySocks
+requests -> chardet
+urllib3 -> brotli
+urllib3 -> brotlicffi
+urllib3 -> certifi
+urllib3 -> cryptography
+urllib3 -> idna
+urllib3 -> pyopenssl
+urllib3 -> urllib3_secure_extra
+urllib3 -> pysocks
+urllib3 -> zstandard
+}

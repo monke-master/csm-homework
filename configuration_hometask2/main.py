@@ -1,39 +1,41 @@
-
 import graphviz
 from bs4 import BeautifulSoup
 import requests
 
 import re
 
+BASE_URL = 'https://pypi.org/pypi/'
 
-# функция чистки строки
-def delEl(a):
-    a = a.replace(" ", '')
+
+# нормализация строки
+def normalize(string):
+    string = string.replace(" ", '')
     flag = -1
     i = 0
-    a = a.replace("\n", '')
-    a = a.replace("'", "")
-    a = a.replace(" ", '')
-    a = a.replace("'", '')
-    a = a.replace('"', '')
-    a = a.replace(" ", '')
-    a = a.replace(',', '')
-    a = a.replace(" ", '')
+    string = string.replace("\n", '')
+    string = string.replace("'", "")
+    string = string.replace(" ", '')
+    string = string.replace("'", '')
+    string = string.replace('"', '')
+    string = string.replace(" ", '')
+    string = string.replace(',', '')
+    string = string.replace(" ", '')
 
-    while i < len(a) - 1:
-        if a[i] in "<>=;:~!@#$^&*()[]":
+    for i in range(0, len(string)):
+        if string[i] in "<>=;:~!@#$^&*()[]":
             flag = i
             break
         i += 1
+
     if flag != -1:
-        a = a[0:flag]
-    return (a)
+        string = string[0:flag]
+    return (string)
 
 
 # функция получения адреса на код установки
-def get_url(library_name: str):
+def find_url(library_name: str):
     library_name = library_name.lower()
-    URL = 'https://pypi.org/pypi/' + library_name + '/'
+    URL = BASE_URL + library_name + '/'
     if library_name[-1].isdigit():
         library_name = library_name[0:-1]
 
@@ -45,6 +47,7 @@ def get_url(library_name: str):
     data = page.text
     soup = BeautifulSoup(data, 'html.parser')
     result = ''
+    # поиск ссылки на гитхаб
     for link in soup.find_all('a'):
         if link.get('href') and "https://github.com/" in (link.get('href')):
             help = link.get('href')
@@ -55,12 +58,14 @@ def get_url(library_name: str):
                 result = (link.get('href'))
 
     base = result.replace("https://github.com/", "")
+    # если ссылка была найдена:
     if result != '':
         URL = result
         page = requests.get(URL)
         data = page.text
         soup = BeautifulSoup(data, 'html.parser')
 
+        # поиск файла с зависимостями
         for link in soup.find_all('a'):
             if link.get('href') and "setup.py" in link.get('href'):
                 result = link.get('href')
@@ -78,20 +83,20 @@ def get_url(library_name: str):
 def get_requirements(url):
     page = requests.get(url)
     html = page.text
-    f = open('test.txt', 'w', encoding="utf-8")
-    f.write(html)
-    f.close()
 
-    file1 = open("test.txt", "r")
+    # запись во временный факл
+    temp = open('temp.txt', 'w', encoding="utf-8")
+    temp.write(html)
+    temp.close()
 
-    beBegin = False
-    beEnd = False
+    file1 = open("temp.txt", "r")
+
+    begin = False
     res = ''
     while True:
         line = file1.readline()
         if not line:
             break
-
         elif 'install_requires=["' in line:
             b = line.split("=")
             line = ' '.join(b[1])
@@ -115,60 +120,58 @@ def get_requirements(url):
             res += line + ","
             break
         elif "install_requires=[" in line or "install_requires = [" in line or "requires = [" in line:
-            beBegin = True
+            begin = True
         else:
-            if beBegin and "]" in line:
-                beBegin = False
+            if begin and "]" in line:
                 break
-            if beBegin:
-                line = delEl(line)
+            if begin:
+                line = normalize(line)
                 line = line.replace(" ", '')
                 line = line.replace("\n", '')
                 line = line.replace('"', '')
                 line = line.replace("'", '')
                 res += line + ","
-    if res == '': return -1
+
+    if res == '':
+        return None
     while res[-1] == ',':
         res = res[0:-1]
-    a = res.split(",")
     file1.close()
-    return a
+    return res.split(",")
 
 
 # построение графа зависимостей
-def build_graph(library, dep_mas):
+def build_graph(library, requirements):
     graph = graphviz.Digraph(library)
-    for i in dep_mas:
-        graph.node(i)
-        if "-" in i:
-            i = '"' + i + '"'  # редактирование для получения сабграфа
-        sub_graph = get_sub_graph(i)
+    for req in requirements:
+        graph.node(req)
+        if "-" in req:
+            req = '"' + req + '"'
+        sub_graph = get_sub_graph(req)
         if not sub_graph:
             graph.subgraph(sub_graph)
     return graph
 
 
-# получение сабграфа
+# получение подграфа
 def get_sub_graph(library):
-    url = get_url(library)  # получаем ссылку на файл с кодом зависимостей
+    url = find_url(library)
     if url and url != '':
         try:
-            req = get_requirements(url)  # получаем массив зависимостей
+            req = get_requirements(url)
+            if req != [''] and req and req != -1:
+                return build_graph(library, req)
         except:
             return None
-        if req != [''] and req and req != -1:
-            return build_graph(library, req)
 
 
-def main():
-    library_name = input()  # вводим название библиотеки
-    url = get_url(library_name)  # получаем ссылку на файл с кодом зависимостей
-    print(url)
-    if url and url != '':
-        req = get_requirements(url)  # получаем массив зависимостей
-        if req != [''] and req and req != -1:
+if __name__ == "__main__":
+    library_name = input("Введите название библиотеки: ")
+    url = find_url(library_name)
+    print("Найденная библиотека: ", url)
+    if url:
+        req = get_requirements(url)
+        if req and req != ['']:
+            print("Полученные зависимости: ")
             dependency_graph = build_graph(library_name, req)
             print(dependency_graph.source)
-
-
-main()
